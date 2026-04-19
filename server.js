@@ -13,7 +13,8 @@ const groq = new Groq({
 
 const MEMORY_FILE = "./memory.json";
 
-// 🧠 Load memory
+/* ---------------- MEMORY ---------------- */
+
 function loadMemory() {
   if (!fs.existsSync(MEMORY_FILE)) {
     return {
@@ -21,7 +22,9 @@ function loadMemory() {
       stats: {
         totalMessages: 0,
         correctSentences: 0,
-        mistakes: 0
+        mistakes: 0,
+        xp: 0,
+        level: 1
       },
       mistakeLog: []
     };
@@ -29,21 +32,32 @@ function loadMemory() {
   return JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8"));
 }
 
-// 🧠 Save memory
 function saveMemory(data) {
   fs.writeFileSync(MEMORY_FILE, JSON.stringify(data, null, 2));
 }
 
-// 🧠 Simple mistake detection
+/* ---------------- LEVEL SYSTEM ---------------- */
+
+function calculateLevel(xp) {
+  if (xp < 5) return 1;
+  if (xp < 15) return 2;
+  if (xp < 30) return 3;
+  return 4;
+}
+
+/* ---------------- BASIC ERROR DETECTION ---------------- */
+
 function isLikelyIncorrect(text) {
-  const lower = text.toLowerCase();
+  const t = text.toLowerCase();
   return (
-    lower.includes(" i go ") ||
-    lower.includes(" i is ") ||
-    lower.includes(" he go ") ||
-    /^[a-z]{6,}$/i.test(text) // random letters
+    t.includes(" i go ") ||
+    t.includes(" i is ") ||
+    t.includes(" he go ") ||
+    /^[a-z]{6,}$/i.test(text)
   );
 }
+
+/* ---------------- SERVER ---------------- */
 
 app.post("/chat", async (req, res) => {
   try {
@@ -61,20 +75,38 @@ app.post("/chat", async (req, res) => {
         {
           role: "system",
           content: `
-You are Giulia, a friendly English tutor with progress tracking.
+You are Giulia, a friendly English tutor, vocabulary coach, and sentence upgrader.
 
-USER STATS:
-- Messages: ${memory.stats.totalMessages}
-- Mistakes: ${memory.stats.mistakes}
-- Correct: ${memory.stats.correctSentences}
+PERSONALITY:
+- Warm, friendly, slightly funny
+- Feels like a real tutor-friend
+- Encouraging and supportive
+
+CORE JOB:
+1. Correct English first (if needed)
+2. Then upgrade the sentence:
+   - make it more natural OR
+   - more advanced OR
+   - use idioms/proverbs when appropriate
 
 RULES:
-1. Always correct English first
-2. Be friendly and human
-3. Keep replies short (1–3 lines)
-4. Encourage improvement
-5. Be slightly funny sometimes
-6. Do NOT be robotic
+- Keep reply MAX 3 lines
+- Always show correction first
+- Then improved version
+- Be simple and clear
+- Do NOT over-explain grammar
+- Be natural like a human tutor
+
+USER INFO:
+- Name: ${memory.name}
+- Level: ${memory.stats.level}
+- XP: ${memory.stats.xp}
+
+LEVELS:
+1 = Beginner
+2 = Elementary
+3 = Intermediate
+4 = Advanced
 `
         },
         { role: "user", content: userText }
@@ -83,15 +115,28 @@ RULES:
 
     let reply = response.choices[0].message.content;
 
-    // 📊 UPDATE STATS
+    /* ---------------- UPDATE STATS ---------------- */
+
     if (likelyWrong) {
       memory.stats.mistakes++;
+      memory.stats.xp += 1;
       memory.mistakeLog.push(userText);
     } else {
       memory.stats.correctSentences++;
+      memory.stats.xp += 2;
     }
 
-    // 🧠 NAME MEMORY
+    /* ---------------- LEVEL UP ---------------- */
+
+    const newLevel = calculateLevel(memory.stats.xp);
+
+    if (newLevel > memory.stats.level) {
+      memory.stats.level = newLevel;
+      reply += `\n\n🏆 Level Up! You are now Level ${newLevel}`;
+    }
+
+    /* ---------------- NAME MEMORY ---------------- */
+
     if (userText.toLowerCase().includes("my name is")) {
       const name = userText.split("is")[1]?.trim();
       if (name) memory.name = name;
@@ -99,9 +144,10 @@ RULES:
 
     saveMemory(memory);
 
-    // 📊 OPTIONAL PROGRESS FEEDBACK
+    /* ---------------- PROGRESS FEEDBACK ---------------- */
+
     if (memory.stats.totalMessages % 5 === 0) {
-      reply += `\n\n📊 Progress: ${memory.stats.correctSentences} correct, ${memory.stats.mistakes} mistakes so far.`;
+      reply += `\n\n📊 XP: ${memory.stats.xp} | Level: ${memory.stats.level}`;
     }
 
     res.json({ reply });
@@ -113,7 +159,7 @@ RULES:
 });
 
 app.get("/", (req, res) => {
-  res.send("Giulia with Progress Tracking is running 📊");
+  res.send("Giulia is fully upgraded 🎓📊");
 });
 
 const PORT = process.env.PORT || 3000;
