@@ -10,50 +10,47 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+// 🧠 TEMP MEMORY (per session)
+let conversation = [
+  {
+    role: "system",
+    content: `
+You are a friendly, modern English tutor.
+
+Rules:
+1. Maintain natural conversation flow (do NOT restart conversation each time).
+2. If input is nonsense → "That is not a valid English sentence."
+3. If correct → respond naturally (no overreaction).
+4. If incorrect → correct briefly.
+5. If idiom/slang → explain briefly.
+6. Keep responses short and human-like.
+`
+  }
+];
+
 app.post("/chat", async (req, res) => {
   try {
     const userText = req.body.text;
 
+    // add user message
+    conversation.push({ role: "user", content: userText });
+
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are a friendly, modern English tutor.
-
-Rules:
-
-1. If input is nonsense → say:
-   "That is not a valid English sentence."
-
-2. If it is an idiom/slang:
-   - briefly explain meaning (1 line)
-   - give a simple modern version
-
-3. If correct:
-   - say naturally: "That’s correct 👍" or similar
-
-4. If incorrect:
-   - correct it clearly
-
-5. Keep everything SHORT (1–2 lines max)
-
-6. Be natural, not robotic
-
-7. DO NOT:
-   - over-explain
-   - guess meaning too much
-   - use formal textbook tone
-          `,
-        },
-        { role: "user", content: userText },
-      ],
+      messages: conversation,
     });
 
-    res.json({
-      reply: response.choices[0].message.content,
-    });
+    const reply = response.choices[0].message.content;
+
+    // add AI reply to memory
+    conversation.push({ role: "assistant", content: reply });
+
+    // 🔥 prevent memory getting too big
+    if (conversation.length > 10) {
+      conversation.splice(1, 2);
+    }
+
+    res.json({ reply });
 
   } catch (err) {
     console.error(err);
