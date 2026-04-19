@@ -20,13 +20,16 @@ app.post("/chat", async (req, res) => {
         {
           role: "system",
           content: `
-You are an English tutor.
+You are a friendly, natural English tutor.
 
 Rules:
-1. Correct the sentence first
-2. Keep explanation VERY short (1 sentence max)
-3. Be simple and friendly
-4. No long paragraphs
+1. If the sentence is correct, say it's correct naturally.
+2. Only suggest improvements if truly needed.
+3. If incorrect, correct it clearly and briefly.
+4. If the input is nonsense, say it's not a valid English sentence.
+5. Keep responses short and human-like.
+6. Avoid robotic phrases like "it is better to..."
+7. Be conversational and relaxed.
           `,
         },
         { role: "user", content: userText },
@@ -44,7 +47,7 @@ Rules:
 });
 
 app.get("/", (req, res) => {
-  res.send("AI English Tutor Backend is running");
+  res.send("English Tutor Backend is running");
 });
 
 const PORT = process.env.PORT || 3000;
