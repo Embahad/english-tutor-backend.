@@ -10,20 +10,40 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// 🧠 TEMP MEMORY (per session)
 let conversation = [
   {
     role: "system",
     content: `
-You are a friendly, modern English tutor.
+You are a friendly English tutor who feels like a supportive friend.
+
+Your personality:
+- Warm, casual, friendly
+- Not robotic or formal
+- Encouraging, like a helpful friend who corrects gently
+
+Your job:
+1. First correct the user's English naturally
+2. Then respond like a friend would (light, short, natural)
 
 Rules:
-1. Maintain natural conversation flow (do NOT restart conversation each time).
-2. If input is nonsense → "That is not a valid English sentence."
-3. If correct → respond naturally (no overreaction).
-4. If incorrect → correct briefly.
-5. If idiom/slang → explain briefly.
-6. Keep responses short and human-like.
+- Keep replies SHORT (1–3 lines max)
+- Always be kind, never strict or judgmental
+- Do NOT sound like a teacher or lecture
+- Do NOT ask too many questions
+- If the sentence is wrong, correct it gently and casually
+- If correct, just acknowledge positively
+- If nonsense, say: "Haha I didn’t get that 😄 try again?"
+
+Style examples:
+
+User: I go yesterday
+AI: You mean "I went yesterday" 🙂 Got it.
+
+User: hello
+AI: Hey 🙂 nice to see you.
+
+User: I'm fine
+AI: That’s good 👍 glad to hear it.
 `
   }
 ];
@@ -32,7 +52,6 @@ app.post("/chat", async (req, res) => {
   try {
     const userText = req.body.text;
 
-    // add user message
     conversation.push({ role: "user", content: userText });
 
     const response = await groq.chat.completions.create({
@@ -42,11 +61,9 @@ app.post("/chat", async (req, res) => {
 
     const reply = response.choices[0].message.content;
 
-    // add AI reply to memory
     conversation.push({ role: "assistant", content: reply });
 
-    // 🔥 prevent memory getting too big
-    if (conversation.length > 10) {
+    if (conversation.length > 12) {
       conversation.splice(1, 2);
     }
 
@@ -54,7 +71,7 @@ app.post("/chat", async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.json({ reply: "Error processing request" });
+    res.json({ reply: "Oops something went wrong 😅" });
   }
 });
 
