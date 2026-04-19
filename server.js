@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import Groq from "groq-sdk";
+import fs from "fs";
 
 const app = express();
 app.use(cors());
@@ -10,73 +11,82 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-let conversation = [
-  {
-    role: "system",
-    content: `
-You are a friendly English tutor who feels like a supportive friend.
+const MEMORY_FILE = "./memory.json";
 
-Your personality:
-- Warm, casual, friendly
-- Not robotic or formal
-- Encouraging, like a helpful friend who corrects gently
+// 🧠 Load memory
+function loadMemory() {
+  if (!fs.existsSync(MEMORY_FILE)) return {};
+  return JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8"));
+}
 
-Your job:
-1. First correct the user's English naturally
-2. Then respond like a friend would (light, short, natural)
-
-Rules:
-- Keep replies SHORT (1–3 lines max)
-- Always be kind, never strict or judgmental
-- Do NOT sound like a teacher or lecture
-- Do NOT ask too many questions
-- If the sentence is wrong, correct it gently and casually
-- If correct, just acknowledge positively
-- If nonsense, say: "Haha I didn’t get that 😄 try again?"
-
-Style examples:
-
-User: I go yesterday
-AI: You mean "I went yesterday" 🙂 Got it.
-
-User: hello
-AI: Hey 🙂 nice to see you.
-
-User: I'm fine
-AI: That’s good 👍 glad to hear it.
-`
-  }
-];
+// 🧠 Save memory
+function saveMemory(data) {
+  fs.writeFileSync(MEMORY_FILE, JSON.stringify(data, null, 2));
+}
 
 app.post("/chat", async (req, res) => {
   try {
     const userText = req.body.text;
 
-    conversation.push({ role: "user", content: userText });
+    let memory = loadMemory();
+
+    // default user memory
+    if (!memory.user) {
+      memory.user = {
+        name: "friend",
+        mistakes: []
+      };
+    }
 
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
-      messages: conversation,
+      messages: [
+        {
+          role: "system",
+          content: `
+You are Giulia, a friendly English tutor with permanent memory.
+
+USER MEMORY:
+- Name: ${memory.user.name}
+- Known mistakes: ${JSON.stringify(memory.user.mistakes)}
+
+RULES:
+1. Always correct English first
+2. Be friendly, human, and conversational
+3. Remember user information when relevant
+4. Keep replies short (1–3 lines)
+5. If user gives name, store it naturally in response
+
+IMPORTANT:
+- You are NOT a chatbot
+- You are Giulia, a consistent personality with memory
+`
+        },
+        { role: "user", content: userText },
+      ],
     });
 
-    const reply = response.choices[0].message.content;
+    let reply = response.choices[0].message.content;
 
-    conversation.push({ role: "assistant", content: reply });
-
-    if (conversation.length > 12) {
-      conversation.splice(1, 2);
+    // 🧠 SIMPLE MEMORY DETECTION (name capture)
+    if (userText.toLowerCase().includes("my name is")) {
+      const name = userText.split("is")[1]?.trim();
+      if (name) {
+        memory.user.name = name;
+        saveMemory(memory);
+      }
     }
 
     res.json({ reply });
 
   } catch (err) {
     console.error(err);
-    res.json({ reply: "Oops something went wrong 😅" });
+    res.json({ reply: "Error processing request 😅" });
   }
 });
 
 app.get("/", (req, res) => {
-  res.send("English Tutor Backend is running");
+  res.send("Giulia is alive with memory 🧠");
 });
 
 const PORT = process.env.PORT || 3000;
