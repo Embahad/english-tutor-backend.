@@ -1,4 +1,9 @@
 {
   "name": "friend",
-  "facts": []
+  "stats": {
+    "totalMessages": 0,
+    "correctSentences": 0,
+    "mistakes": 0
+  },
+  "mistakeLog": []
 }
