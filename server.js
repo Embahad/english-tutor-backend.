@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import Groq from "groq-sdk";
-import fs from "fs";
 
 const app = express();
 app.use(cors());
@@ -11,63 +10,20 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const MEMORY_FILE = "./memory.json";
-
-/* ---------------- MEMORY ---------------- */
-
-function loadMemory() {
-  if (!fs.existsSync(MEMORY_FILE)) {
-    return {
-      name: "friend",
-      stats: {
-        totalMessages: 0,
-        correctSentences: 0,
-        mistakes: 0,
-        xp: 0,
-        level: 1
-      },
-      mistakeLog: []
-    };
-  }
-  return JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8"));
+// basic fluency score from speech confidence
+function getScore(confidence) {
+  if (confidence > 0.9) return 9;
+  if (confidence > 0.8) return 8;
+  if (confidence > 0.7) return 7;
+  if (confidence > 0.6) return 6;
+  return 5;
 }
-
-function saveMemory(data) {
-  fs.writeFileSync(MEMORY_FILE, JSON.stringify(data, null, 2));
-}
-
-/* ---------------- LEVEL SYSTEM ---------------- */
-
-function calculateLevel(xp) {
-  if (xp < 5) return 1;
-  if (xp < 15) return 2;
-  if (xp < 30) return 3;
-  return 4;
-}
-
-/* ---------------- BASIC ERROR DETECTION ---------------- */
-
-function isLikelyIncorrect(text) {
-  const t = text.toLowerCase();
-  return (
-    t.includes(" i go ") ||
-    t.includes(" i is ") ||
-    t.includes(" he go ") ||
-    /^[a-z]{6,}$/i.test(text)
-  );
-}
-
-/* ---------------- SERVER ---------------- */
 
 app.post("/chat", async (req, res) => {
   try {
-    const userText = req.body.text;
+    const { text, confidence = 0.8 } = req.body;
 
-    let memory = loadMemory();
-
-    memory.stats.totalMessages++;
-
-    const likelyWrong = isLikelyIncorrect(userText);
+    const score = getScore(confidence);
 
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
@@ -75,92 +31,63 @@ app.post("/chat", async (req, res) => {
         {
           role: "system",
           content: `
-You are Giulia, a friendly English tutor, vocabulary coach, and sentence upgrader.
+You are Giulia, a speaking coach.
 
-PERSONALITY:
-- Warm, friendly, slightly funny
-- Feels like a real tutor-friend
-- Encouraging and supportive
+YOUR JOB:
+- Talk naturally like a human
+- Help the user improve pronunciation and fluency
+- Give feedback like a real tutor
 
-CORE JOB:
-1. Correct English first (if needed)
-2. Then upgrade the sentence:
-   - make it more natural OR
-   - more advanced OR
-   - use idioms/proverbs when appropriate
+STYLE:
+- Friendly, encouraging, slightly playful
+- Short responses (1–3 lines)
+- No robotic formatting
 
-RULES:
-- Keep reply MAX 3 lines
-- Always show correction first
-- Then improved version
-- Be simple and clear
-- Do NOT over-explain grammar
-- Be natural like a human tutor
+COACHING MODE:
+- If user speaks → give feedback
+- Mention clarity and fluency
+- Suggest improvement casually
+- Occasionally give a new sentence to repeat
 
-USER INFO:
-- Name: ${memory.name}
-- Level: ${memory.stats.level}
-- XP: ${memory.stats.xp}
+EXAMPLES:
 
-LEVELS:
-1 = Beginner
-2 = Elementary
-3 = Intermediate
-4 = Advanced
+User speaks  
+Giulia: That was pretty clear 🙂 maybe slow down a bit on the last word
+
+User speaks well  
+Giulia: Nice 👏 that sounded smooth!
+
+User struggles  
+Giulia: Hmm a bit unclear there 😅 try saying it slower: “I went yesterday”
+
+IMPORTANT:
+- Sound like a real person
+- Not a system
 `
         },
-        { role: "user", content: userText }
+        {
+          role: "user",
+          content: `User said: "${text}" with confidence ${confidence} (score ${score}/10)`
+        }
       ],
     });
 
     let reply = response.choices[0].message.content;
 
-    /* ---------------- UPDATE STATS ---------------- */
-
-    if (likelyWrong) {
-      memory.stats.mistakes++;
-      memory.stats.xp += 1;
-      memory.mistakeLog.push(userText);
-    } else {
-      memory.stats.correctSentences++;
-      memory.stats.xp += 2;
-    }
-
-    /* ---------------- LEVEL UP ---------------- */
-
-    const newLevel = calculateLevel(memory.stats.xp);
-
-    if (newLevel > memory.stats.level) {
-      memory.stats.level = newLevel;
-      reply += `\n\n🏆 Level Up! You are now Level ${newLevel}`;
-    }
-
-    /* ---------------- NAME MEMORY ---------------- */
-
-    if (userText.toLowerCase().includes("my name is")) {
-      const name = userText.split("is")[1]?.trim();
-      if (name) memory.name = name;
-    }
-
-    saveMemory(memory);
-
-    /* ---------------- PROGRESS FEEDBACK ---------------- */
-
-    if (memory.stats.totalMessages % 5 === 0) {
-      reply += `\n\n📊 XP: ${memory.stats.xp} | Level: ${memory.stats.level}`;
-    }
+    // attach score naturally
+    reply += `\n\n🎤 Score: ${score}/10`;
 
     res.json({ reply });
 
   } catch (err) {
     console.error(err);
-    res.json({ reply: "Error 😅 something went wrong" });
+    res.json({ reply: "Error 😅 try again" });
   }
 });
 
 app.get("/", (req, res) => {
-  res.send("Giulia is fully upgraded 🎓📊");
+  res.send("Giulia Speaking Coach Active 🎤");
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on " + PORT));
+app.listen(PORT, () => console.log("Running on " + PORT));
